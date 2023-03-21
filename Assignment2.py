@@ -51,14 +51,24 @@ def distance(atom1, atom2):
     dz = atom1['z'] - atom2['z']
     return math.sqrt(dx * dx + dy * dy + dz * dz)
 
-def lennard_jones(c6, c12, r):
-    r_inv = 1 / r
-    r6 = r_inv ** 6
-    r12 = r6 * r6
-    return c12 * r12 - c6 * r6
+def lennard_jones(atom1, atom2, c6_matrix, c12_matrix):
+    atom_type1 = atom1['type']
+    atom_type2 = atom2['type']
+    c6 = c6_matrix[atom_type1][atom_type2]
+    c12 = c12_matrix[atom_type1][atom_type2]
 
-def electrostatic(qi, qj, r, epsilon):
-    return qi * qj / (r * epsilon)
+    r = distance(atom1, atom2) / 10  # Convert distance from angstroms to nanometers
+    r6 = r ** 6
+    r12 = r6 * r6
+
+    return 4 * (c12 / r12 - c6 / r6)
+
+def electrostatic(atom1, atom2, epsilon):
+    q1 = atom1['charge']
+    q2 = atom2['charge']
+    r = distance(atom1, atom2)
+
+    return (q1 * q2) / (epsilon * r)
 
 def rmsd(coords1, coords2):
     # Filter out hydrogen atoms
@@ -93,14 +103,11 @@ def docking_energy(protein, ligand, c6_matrix, c12_matrix, epsilon):
     total_energy = 0
     for protein_atom in protein:
         for ligand_atom in ligand:
-            r = distance(protein_atom, ligand_atom) / 10  # Convert angstroms to nanometers
-            c6 = c6_matrix[protein_atom['type']][ligand_atom['type']]
-            c12 = c12_matrix[protein_atom['type']][ligand_atom['type']]
-            lj_energy = lennard_jones(c6, c12, r)
-            electrostatic_energy = electrostatic(protein_atom['charge'], ligand_atom['charge'], r, epsilon)
+            lj_energy = lennard_jones(protein_atom, ligand_atom, c6_matrix, c12_matrix)
+            electrostatic_energy = electrostatic(protein_atom, ligand_atom, epsilon)
             total_energy += lj_energy + electrostatic_energy
-    return total_energy
 
+    return total_energy
 
 def main():
     protein = read_pdbm("protein.pdbm")
@@ -122,7 +129,7 @@ def main():
         beta = i * beta_step
         rotated_ligand = rotate_ligand(ligand_starting, beta)
         energy = docking_energy(protein, rotated_ligand, c6_matrix, c12_matrix, epsilon)
-        print(f"Energy for β = {beta}: {energy}")  # Print energy values for each β angle
+        print(f"{energy:.15f}")
 
         if energy < best_energy:
             best_energy = energy
