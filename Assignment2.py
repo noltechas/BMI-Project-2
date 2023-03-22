@@ -100,20 +100,30 @@ def rotate_ligand(ligand, beta):
     return rotated_ligand
 
 def docking_energy(protein, ligand, c6_matrix, c12_matrix, epsilon):
-    total_energy = 0.0
+    total_energy = 0
+    atom_pair_energies = []
 
     for protein_atom in protein:
         for ligand_atom in ligand:
-            r = distance(protein_atom, ligand_atom)
-            if r == 0.0:
-                continue
-
+            dist = distance(protein_atom, ligand_atom)
+            electrostatic_energy = electrostatic(protein_atom, ligand_atom, epsilon, dist)
             lj_energy = lennard_jones(protein_atom, ligand_atom, c6_matrix, c12_matrix)
-            electrostatic_energy = electrostatic(protein_atom, ligand_atom, epsilon, r)
 
-            total_energy += lj_energy + electrostatic_energy
+            pair_energy = electrostatic_energy + lj_energy
+            total_energy += pair_energy
 
-    return total_energy
+            atom_pair_energies.append({
+                'protein_atom': protein_atom,
+                'ligand_atom': ligand_atom,
+                'electrostatic_energy': electrostatic_energy,
+                'lj_energy': lj_energy
+            })
+
+    return total_energy, atom_pair_energies
+
+
+    return total_energy, atom_pair_energies
+
 
 
 def main():
@@ -143,8 +153,14 @@ def main():
         rotated_ligand = rotate_ligand(ligand_starting, beta)
 
         # Calculate docking energy for rotated ligand
-        energy = docking_energy(protein, rotated_ligand, c6_matrix, c12_matrix, epsilon)
+        energy, atom_pair_energies = docking_energy(protein, rotated_ligand, c6_matrix, c12_matrix, epsilon)
         print(f"Energy for β = {beta}: {energy}")
+
+        if i == 0:  # Print the first protein-ligand atom pair energy values
+            first_pair = atom_pair_energies[0]
+            print("First protein-ligand atom pair energy values:")
+            print(f"Electrostatic energy: {first_pair['electrostatic_energy']:.4f}")
+            print(f"Lennard-Jones energy: {first_pair['lj_energy']:.9f}")
 
         # Update best pose if current energy is lower than previous best
         if energy < best_energy:
@@ -167,6 +183,8 @@ def main():
         [-math.sin(best_beta), 0, math.cos(best_beta)],
     ])
     return best_rotation_matrix
+
+
 
 if __name__ == "__main__":
     best_rotation_matrix = main()
