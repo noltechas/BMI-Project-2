@@ -63,12 +63,12 @@ def lennard_jones(atom1, atom2, c6_matrix, c12_matrix):
 
     return 4 * (c12 / r12 - c6 / r6)
 
-def electrostatic(atom1, atom2, epsilon):
+def electrostatic(atom1, atom2, epsilon, r):
     q1 = atom1['charge']
     q2 = atom2['charge']
-    r = distance(atom1, atom2)
 
     return (q1 * q2) / (epsilon * r)
+
 
 def rmsd(coords1, coords2):
     # Filter out hydrogen atoms
@@ -100,47 +100,65 @@ def rotate_ligand(ligand, beta):
     return rotated_ligand
 
 def docking_energy(protein, ligand, c6_matrix, c12_matrix, epsilon):
-    total_energy = 0
+    total_energy = 0.0
+
     for protein_atom in protein:
         for ligand_atom in ligand:
+            r = distance(protein_atom, ligand_atom)
+            if r == 0.0:
+                continue
+
             lj_energy = lennard_jones(protein_atom, ligand_atom, c6_matrix, c12_matrix)
-            electrostatic_energy = electrostatic(protein_atom, ligand_atom, epsilon)
+            electrostatic_energy = electrostatic(protein_atom, ligand_atom, epsilon, r)
+
             total_energy += lj_energy + electrostatic_energy
 
     return total_energy
 
+
 def main():
+    # Read protein, starting ligand, and actual ligand from PDB files
     protein = read_pdbm("protein.pdbm")
     ligand_starting = read_pdbm("ligand_starting.pdbm")
     ligand_actual = read_pdbm("ligand_actual.pdb")
+
+    # Load Lennard-Jones parameters and set epsilon value
     c6_matrix, c12_matrix = load_lj_params("ffG43b1nb.params")
     epsilon = 138.935485
 
+    # Calculate RMSD between starting and actual ligands
     rmsd_start_actual = rmsd(ligand_starting, ligand_actual)
-    print(f"RMSD between ligand_starting.pdbm and ligand_actual.pdb: {rmsd_start_actual}")
+    print("RMSD between ligand starting and actual:", rmsd_start_actual)
 
-    n_samples = 100
-    beta_step = 2 * math.pi / n_samples
+    # Set angle step size and initialize variables for best pose
+    angle_step = math.radians(3.6)
     best_energy = float('inf')
-    best_beta = None
+    best_beta = 0
     best_rotated_ligand = None
 
-    for i in range(n_samples):
-        beta = i * beta_step
+    # Loop over all possible beta angles in 3.6 degree increments
+    for i in range(int(360 / 3.6)):
+        # Calculate beta angle and rotate ligand
+        beta = i * angle_step
         rotated_ligand = rotate_ligand(ligand_starting, beta)
-        energy = docking_energy(protein, rotated_ligand, c6_matrix, c12_matrix, epsilon)
-        print(f"{energy:.15f}")
 
+        # Calculate docking energy for rotated ligand
+        energy = docking_energy(protein, rotated_ligand, c6_matrix, c12_matrix, epsilon)
+        print(f"Energy for β = {beta}: {energy}")
+
+        # Update best pose if current energy is lower than previous best
         if energy < best_energy:
             best_energy = energy
             best_beta = beta
             best_rotated_ligand = rotated_ligand
 
-    print(f"\nMost favorable energy: {best_energy}")
-    print(f"Most favorable β angle: {best_beta}")
+    # Print out best pose and corresponding energy
+    print("Best β angle:", best_beta)
+    print("Best energy:", best_energy)
 
+    # Calculate RMSD between best pose and actual ligand
     rmsd_best_actual = rmsd(best_rotated_ligand, ligand_actual)
-    print(f"RMSD between most favorable pose and ligand_actual.pdb: {rmsd_best_actual}")
+    print("RMSD between best pose and actual:", rmsd_best_actual)
 
 if __name__ == "__main__":
     main()
