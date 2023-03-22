@@ -160,6 +160,14 @@ def main():
     rmsd_best_actual = rmsd(best_rotated_ligand, ligand_actual)
     print("RMSD between best pose and actual:", rmsd_best_actual)
 
-if __name__ == "__main__":
-    main()
+    # Return the best rotation matrix
+    best_rotation_matrix = np.array([
+        [math.cos(best_beta), 0, math.sin(best_beta)],
+        [0, 1, 0],
+        [-math.sin(best_beta), 0, math.cos(best_beta)],
+    ])
+    return best_rotation_matrix
 
+if __name__ == "__main__":
+    best_rotation_matrix = main()
+    print("Best rotation matrix:\n", best_rotation_matrix)
