@@ -3,39 +3,12 @@ import math
 import os
 
 atom_charges = {
-    'C': 0.6163,
-    'CA': 0.5973,
-    'CB': -0.0152,
-    'CG': -0.1415,
-    'CG1': -0.2061,
-    'CG2': -0.1913,
-    'CD': 0.8185,
-    'CD1': 0.7341,
-    'CD2': 0.7455,
-    'CE': 0.9916,
-    'CE1': 0.9841,
-    'CE2': 0.9565,
-    'CE3': 0.9876,
-    'CZ': 0.9616,
-    'CZ2': 0.9756,
-    'CZ3': 0.9769,
-    'CH2': 0.9949,
-    'N': -0.4787,
-    'NA': -0.3660,
-    'NB': -0.5932,
-    'NC': -0.8360,
-    'ND1': -0.5659,
-    'ND2': -0.5816,
-    'NE': -0.6690,
-    'NE1': -0.7582,
-    'NE2': -0.7902,
-    'NZ': -0.9209,
-    'O': -0.5196,
-    'OH': -0.5761,
-    'OXT': -0.5103,
-    'S': 1.0560,
-    'SD': 0.7843,
-    'SG': 0.7657,
+    'C': 0.51,
+    'N': -0.47,
+    'O': -0.51,
+    'S': -0.23,
+    'P': 1.0,
+    'H': 0.21,
 }
 
 
@@ -45,11 +18,17 @@ def read_pdbm(file_path, atom_charges):
     with open(file_path, 'r') as f:
         for line in f:
             if line.startswith("ATOM") or line.startswith("HETATM"):
-                atom_type = line[12:16].strip()
+                atom_type = line[12:16].strip()  # Extract atom type from columns 13-16
                 x = float(line[30:38].strip())
                 y = float(line[38:46].strip())
                 z = float(line[46:54].strip())
-                charge = atom_charges.get(atom_type, 0)  # Use 0 as a default charge if the atom type is not in the dictionary
+
+                # Use 0 as a default charge if the atom type is not in the dictionary
+                charge = 0
+                for key in atom_charges:
+                    if atom_type.startswith(key):
+                        charge = atom_charges[key]
+                        break
 
                 atom = {
                     'type': atom_type,
@@ -60,6 +39,8 @@ def read_pdbm(file_path, atom_charges):
                 }
                 atoms.append(atom)
     return atoms
+
+
 
 
 
@@ -99,7 +80,7 @@ def distance(atom1, atom2):
 def electrostatic(atom1, atom2, epsilon, distance):
     q1 = atom1['charge']
     q2 = atom2['charge']
-    conversion_factor = 332.06371
+    conversion_factor = 332.06371  # in kJ/(mol·Å·e^2)
     energy = (conversion_factor * q1 * q2) / (epsilon * distance)
     return energy
 
