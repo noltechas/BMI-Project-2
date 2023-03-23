@@ -2,21 +2,66 @@ import numpy as np
 import math
 import os
 
-def read_pdbm(filename):
+atom_charges = {
+    'C': 0.6163,
+    'CA': 0.5973,
+    'CB': -0.0152,
+    'CG': -0.1415,
+    'CG1': -0.2061,
+    'CG2': -0.1913,
+    'CD': 0.8185,
+    'CD1': 0.7341,
+    'CD2': 0.7455,
+    'CE': 0.9916,
+    'CE1': 0.9841,
+    'CE2': 0.9565,
+    'CE3': 0.9876,
+    'CZ': 0.9616,
+    'CZ2': 0.9756,
+    'CZ3': 0.9769,
+    'CH2': 0.9949,
+    'N': -0.4787,
+    'NA': -0.3660,
+    'NB': -0.5932,
+    'NC': -0.8360,
+    'ND1': -0.5659,
+    'ND2': -0.5816,
+    'NE': -0.6690,
+    'NE1': -0.7582,
+    'NE2': -0.7902,
+    'NZ': -0.9209,
+    'O': -0.5196,
+    'OH': -0.5761,
+    'OXT': -0.5103,
+    'S': 1.0560,
+    'SD': 0.7843,
+    'SG': 0.7657,
+}
+
+
+def read_pdbm(file_path, atom_charges):
     atoms = []
-    with open(filename, "r") as file:
-        for line in file:
-            if line.startswith("ATOM"):
-                atom_data = line.split()
+
+    with open(file_path, 'r') as f:
+        for line in f:
+            if line.startswith("ATOM") or line.startswith("HETATM"):
+                atom_type = line[12:16].strip()
+                x = float(line[30:38].strip())
+                y = float(line[38:46].strip())
+                z = float(line[46:54].strip())
+                charge = atom_charges.get(atom_type, 0)  # Use 0 as a default charge if the atom type is not in the dictionary
+
                 atom = {
-                    'type': atom_data[2],
-                    'x': float(atom_data[5]),
-                    'y': float(atom_data[6]),
-                    'z': float(atom_data[7]),
-                    'charge': float(atom_data[-2]),  # Read charge from the second last column
+                    'type': atom_type,
+                    'x': x,
+                    'y': y,
+                    'z': z,
+                    'charge': charge
                 }
                 atoms.append(atom)
     return atoms
+
+
 
 def load_lj_params(filename):
     c6_matrix = {}
@@ -51,23 +96,20 @@ def distance(atom1, atom2):
     dz = atom1['z'] - atom2['z']
     return math.sqrt(dx * dx + dy * dy + dz * dz)
 
-def lennard_jones(atom1, atom2, c6_matrix, c12_matrix):
-    atom_type1 = atom1['type']
-    atom_type2 = atom2['type']
-    c6 = c6_matrix[atom_type1][atom_type2]
-    c12 = c12_matrix[atom_type1][atom_type2]
-
-    r = distance(atom1, atom2) / 10  # Convert distance from angstroms to nanometers
-    r6 = r ** 6
-    r12 = r6 * r6
-
-    return 4 * (c12 / r12 - c6 / r6)
-
-def electrostatic(atom1, atom2, epsilon, r):
+def electrostatic(atom1, atom2, epsilon, distance):
     q1 = atom1['charge']
     q2 = atom2['charge']
+    conversion_factor = 332.06371
+    energy = (conversion_factor * q1 * q2) / (epsilon * distance)
+    return energy
 
-    return (q1 * q2) / (epsilon * r)
+
+def lennard_jones(atom1, atom2, c6_matrix, c12_matrix, distance):
+    c6 = c6_matrix[atom1['type']][atom2['type']]
+    c12 = c12_matrix[atom1['type']][atom2['type']]
+    energy = c12 / (distance ** 12) - c6 / (distance ** 6)
+    return energy
+
 
 
 def rmsd(coords1, coords2):
@@ -106,21 +148,18 @@ def docking_energy(protein, ligand, c6_matrix, c12_matrix, epsilon):
     for protein_atom in protein:
         for ligand_atom in ligand:
             dist = distance(protein_atom, ligand_atom)
-            electrostatic_energy = electrostatic(protein_atom, ligand_atom, epsilon, dist)
-            lj_energy = lennard_jones(protein_atom, ligand_atom, c6_matrix, c12_matrix)
 
-            pair_energy = electrostatic_energy + lj_energy
-            total_energy += pair_energy
+            electrostatic_energy = electrostatic(protein_atom, ligand_atom, epsilon, dist)
+            lj_energy = lennard_jones(protein_atom, ligand_atom, c6_matrix, c12_matrix, dist)
 
             atom_pair_energies.append({
                 'protein_atom': protein_atom,
                 'ligand_atom': ligand_atom,
                 'electrostatic_energy': electrostatic_energy,
-                'lj_energy': lj_energy
+                'lennard_jones_energy': lj_energy
             })
 
-    return total_energy, atom_pair_energies
-
+            total_energy += electrostatic_energy + lj_energy
 
     return total_energy, atom_pair_energies
 
@@ -128,9 +167,11 @@ def docking_energy(protein, ligand, c6_matrix, c12_matrix, epsilon):
 
 def main():
     # Read protein, starting ligand, and actual ligand from PDB files
-    protein = read_pdbm("protein.pdbm")
-    ligand_starting = read_pdbm("ligand_starting.pdbm")
-    ligand_actual = read_pdbm("ligand_actual.pdb")
+    protein = read_pdbm("protein.pdbm", atom_charges)
+    first_atom = protein[0]
+    print("First atom coordinates: {:.3f}  {:.3f}  {:.3f}".format(first_atom['x'], first_atom['y'], first_atom['z']))
+    ligand_starting = read_pdbm("ligand_starting.pdbm", atom_charges)
+    ligand_actual = read_pdbm("ligand_actual.pdb", atom_charges)
 
     # Load Lennard-Jones parameters and set epsilon value
     c6_matrix, c12_matrix = load_lj_params("ffG43b1nb.params")
@@ -159,8 +200,8 @@ def main():
         if i == 0:  # Print the first protein-ligand atom pair energy values
             first_pair = atom_pair_energies[0]
             print("First protein-ligand atom pair energy values:")
-            print(f"Electrostatic energy: {first_pair['electrostatic_energy']:.4f}")
-            print(f"Lennard-Jones energy: {first_pair['lj_energy']:.9f}")
+            print(f"Electrostatic energy: {first_pair['electrostatic_energy']:.9f}")
+            print(f"Lennard-Jones energy: {first_pair['lennard_jones_energy']:.9f}")
 
         # Update best pose if current energy is lower than previous best
         if energy < best_energy:
